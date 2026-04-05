@@ -1,7 +1,7 @@
 import asyncio
 import contextlib
+import httpx
 import json
-import requests
 from openai import AsyncOpenAI
 import sys
 
@@ -14,17 +14,16 @@ def get_user_input() -> str:
     return input("You: ")
 
 async def fetch_json(url: str, params: dict) -> dict:
+    headers = {
+        "X-API-Key": config["elyos_api_key"]
+    }
     try:
-        headers = {
-            "X-API-Key": config["elyos_api_key"]
-        }
-        response = await asyncio.to_thread(
-            requests.get,
-            url,
-            params=params,
-            headers=headers,
-            timeout=config["timeout"],
-        )
+        async with httpx.AsyncClient(timeout=config["timeout"]) as http_client:
+            response = await http_client.get(
+                url,
+                params=params,
+                headers=headers,
+            )
         success = False
         response.raise_for_status()
         try:
@@ -39,6 +38,8 @@ async def fetch_json(url: str, params: dict) -> dict:
             "success": success,
             "data": data,
         }
+    except asyncio.CancelledError:
+        raise
     except Exception as e:
         return {
             "success": False,
