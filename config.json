@@ -1,0 +1,11 @@
+{
+    "openai_api_key": "",
+    "elyos_api_key": "",
+    "timeout": 30,
+    "delay": 0.1,
+    "tools_file_path": "tools.json",
+    "system_prompt_file_path": "system_prompt.txt",
+    "user_prompt_file_path": "user_prompt.txt",
+    "weather_url": "https://elyos-interview-907656039105.europe-west2.run.app/weather",
+    "research_url": "https://elyos-interview-907656039105.europe-west2.run.app/research"
+}
