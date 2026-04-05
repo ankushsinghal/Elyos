@@ -54,19 +54,18 @@ async def research_topic(topic: str) -> dict:
     """Research a topic (3-8 seconds). Should be cancellable."""
     return await fetch_json(config["research_url"], {"topic": topic})
 
-async def call_llm(user_input: str, conversation_history: list):
+async def call_llm(
+        user_input: str, 
+        conversation_history: list,
+        metadata: dict
+):
     """Send input to LLM, handle tool calls, yield streaming response."""
     conversation_history.append(f"User: {user_input}")
     
-    with open(config["system_prompt_file_path"], "r", encoding="utf-8") as f:
-        system_prompt = f.read().strip()
-
-    with open(config["user_prompt_file_path"], "r", encoding="utf-8") as f:
-        user_prompt_template = f.read().strip()
-        user_prompt = user_prompt_template.format(
-            user_utterance = user_input,
-            conversation_history = conversation_history
-        )
+    user_prompt = metadata["user_prompt_template"].format(
+        user_utterance = user_input,
+        conversation_history = conversation_history
+    )
     
     input_list = [
         {
@@ -80,13 +79,10 @@ async def call_llm(user_input: str, conversation_history: list):
         },
     ]
 
-    with open(config["tools_file_path"], "r", encoding="utf-8") as f:
-        tools = json.load(f)
-
     # Providing the tools to the LLM API to get the correct tool usage
     response = await client.responses.create(
         model="gpt-5",
-        tools=tools,
+        tools=metadata["tools"],
         input=input_list
     )
 
@@ -128,7 +124,7 @@ async def call_llm(user_input: str, conversation_history: list):
     full_output = ""
     async with client.responses.stream(
         model="gpt-5",
-        instructions=system_prompt,
+        instructions=metadata["system_prompt"],
         input=input_list
     ) as stream:
         async for event in stream:
@@ -154,13 +150,13 @@ async def spinner(message: str, stop_event: asyncio.Event):
     sys.stdout.write("\r" + " " * (len(message) + 4) + "\r")
     sys.stdout.flush()
 
-async def execute_user_query(user_input: str, conversation_history: list):
+async def execute_user_query(user_input: str, conversation_history: list, metadata: dict):
     stop_event = asyncio.Event()
     spinner_task = asyncio.create_task(spinner("Thinking...", stop_event))
     history_len_before = len(conversation_history)
     try:
         first_chunk = True
-        async for chunk in call_llm(user_input, conversation_history):
+        async for chunk in call_llm(user_input, conversation_history, metadata):
             # Stopping the spinner when we get the first chunk
             if first_chunk:
                 stop_event.set()
@@ -180,11 +176,21 @@ async def execute_user_query(user_input: str, conversation_history: list):
         with contextlib.suppress(asyncio.CancelledError):
             await spinner_task
 
-async def run_single_query(user_input, conversation_history):
-    await execute_user_query(user_input, conversation_history)
+async def run_single_query(user_input, conversation_history, metadata):
+    await execute_user_query(user_input, conversation_history, metadata)
 
 def main():
     conversation_history = []
+    metadata = {}
+
+    with open(config["system_prompt_file_path"], "r", encoding="utf-8") as f:
+        metadata["system_prompt"] = f.read().strip()
+
+    with open(config["user_prompt_file_path"], "r", encoding="utf-8") as f:
+        metadata["user_prompt_template"] = f.read().strip()
+
+    with open(config["tools_file_path"], "r", encoding="utf-8") as f:
+        metadata["tools"] = json.load(f)
 
     while True:
         try:
@@ -197,7 +203,7 @@ def main():
             break
 
         try:
-            asyncio.run(run_single_query(user_input, conversation_history))
+            asyncio.run(run_single_query(user_input, conversation_history, metadata))
         except KeyboardInterrupt:
             print("\nCancelling current request...")
             print("Ready for new input.")
